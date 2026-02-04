@@ -683,6 +683,7 @@ static u32 umdVideoBuffer = 0;
 static u32 umdVideoViewBuf = 0;
 static u32 umdVideoDataAddr = 0;
 static u32 umdVideoAudioBufAddr = 0;
+static int umdVideoState = 0;
 
 void __PsmfInit() {
 	videoPixelMode = GE_CMODE_32BIT_ABGR8888;
@@ -695,6 +696,7 @@ void __PsmfInit() {
 	umdVideoViewBuf = 0;
 	umdVideoDataAddr = 0;
 	umdVideoAudioBufAddr = 0;
+	umdVideoState = 0;
 }
 
 void __PsmfPlayerLoadModule(int devkitVersion, u32 crc) {
@@ -2006,8 +2008,6 @@ static int __PsmfPlayerFinish(u32 psmfPlayer) {
 
 static int __UMDVideoPlayerLoop() {
 	if (umdVideoPlayer == 0) {
-		u32 filenameAddr = currentMIPS->r[MIPS_REG_A0];
-
 		u32 umdVideoBufferSize = 0x00400000;
 		umdVideoBuffer = userMemory.Alloc(umdVideoBufferSize, false, "UMDVideoBuffer");
 		u32 umdVideoViewBufSize = 512 * 272 * 4;
@@ -2027,35 +2027,60 @@ static int __UMDVideoPlayerLoop() {
 
 		hleCall(scePsmfPlayer, int, scePsmfPlayerCreate, playerPtr, createDataAddr);
 		umdVideoPlayer = playerPtr;
-
-		char filename[512];
-		truncate_cpy(filename, Memory::GetCharPointer(filenameAddr));
-		hleCall(scePsmfPlayer, int, scePsmfPlayerSetPsmf, umdVideoPlayer, filename);
-
-		u32 startDataAddrSize = 24;
-		u32 startDataAddr = userMemory.Alloc(startDataAddrSize, false, "UMDVideoStartData");
-		Memory::Write_U32(0, startDataAddr); // videoCodec (AVC)
-		Memory::Write_U32(0, startDataAddr + 4); // videoStream
-		Memory::Write_U32(15, startDataAddr + 8); // audioCodec (AT3+)
-		Memory::Write_U32(0, startDataAddr + 12); // audioStream
-		Memory::Write_U32(0, startDataAddr + 16); // playMode
-		Memory::Write_U32(1, startDataAddr + 20); // playSpeed
-
-		scePsmfPlayerStart(umdVideoPlayer, startDataAddr, 0);
+		umdVideoState = 0;
 	}
 
-	scePsmfPlayerUpdate(umdVideoPlayer);
+	PsmfPlayer *player = getPsmfPlayer(umdVideoPlayer);
+	if (!player) {
+		sceKernelDelayThread(10000);
+		return 0;
+	}
+
+	if (umdVideoState == 0) { // Created, waiting for status INIT
+		if (player->status == PSMF_PLAYER_STATUS_INIT) {
+			u32 filenameAddr = currentMIPS->r[MIPS_REG_A1];
+			char filename[512];
+			truncate_cpy(filename, Memory::GetCharPointer(filenameAddr));
+			hleCall(scePsmfPlayer, int, scePsmfPlayerSetPsmf, umdVideoPlayer, filename);
+			umdVideoState = 1;
+		}
+	} else if (umdVideoState == 1) { // Set, waiting for status STANDBY
+		if (player->status == PSMF_PLAYER_STATUS_STANDBY) {
+			u32 startDataAddrSize = 24;
+			u32 startDataAddr = userMemory.Alloc(startDataAddrSize, false, "UMDVideoStartData");
+			Memory::Write_U32(0, startDataAddr); // videoCodec (AVC)
+			Memory::Write_U32(0, startDataAddr + 4); // videoStream
+			Memory::Write_U32(15, startDataAddr + 8); // audioCodec (AT3+)
+			Memory::Write_U32(0, startDataAddr + 12); // audioStream
+			Memory::Write_U32(0, startDataAddr + 16); // playMode
+			Memory::Write_U32(1, startDataAddr + 20); // playSpeed
+
+			hleCall(scePsmfPlayer, int, scePsmfPlayerStart, umdVideoPlayer, startDataAddr, 0);
+			umdVideoState = 2;
+		}
+	} else if (umdVideoState == 2) { // Started, waiting for status PLAYING
+		if (player->status == PSMF_PLAYER_STATUS_PLAYING) {
+			umdVideoState = 3;
+		}
+	}
+
+	if (umdVideoState < 3) {
+		sceKernelDelayThread(10000);
+		return 0;
+	}
+
+	hleCall(scePsmfPlayer, int, scePsmfPlayerUpdate, umdVideoPlayer);
 
 	Memory::Write_U32(512, umdVideoDataAddr);
 	Memory::Write_U32(umdVideoViewBuf, umdVideoDataAddr + 4);
 
-	scePsmfPlayerGetVideoData(umdVideoPlayer, umdVideoDataAddr);
+	hleCall(scePsmfPlayer, int, scePsmfPlayerGetVideoData, umdVideoPlayer, umdVideoDataAddr);
 
 	// Display it.
 	__DisplaySetFramebuf(umdVideoViewBuf, 512, 3, 1);
 
 	// Audio
-	scePsmfPlayerGetAudioData(umdVideoPlayer, umdVideoAudioBufAddr);
+	hleCall(scePsmfPlayer, int, scePsmfPlayerGetAudioData, umdVideoPlayer, umdVideoAudioBufAddr);
 
 	// Small delay
 	sceKernelDelayThread(10000);

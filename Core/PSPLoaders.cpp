@@ -88,6 +88,9 @@ bool MountGameISO(FileLoader *fileLoader, std::string *errorString) {
 
 bool LoadParamSFOFromDisc() {
 	std::string sfoPath("disc0:/PSP_GAME/PARAM.SFO");
+	if (PSP_CoreParameter().fileType == IdentifiedFileType::PSP_UMD_VIDEO_ISO) {
+		sfoPath = "disc0:/UMD_VIDEO/PARAM.SFO";
+	}
 	PSPFileInfo fileInfo = pspFileSystem.GetFileInfo(sfoPath.c_str());
 	if (fileInfo.exists) {
 		std::vector<u8> paramsfo;
