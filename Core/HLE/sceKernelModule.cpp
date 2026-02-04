@@ -1842,7 +1842,7 @@ bool __KernelLoadUMDVideo(std::string_view base_filename, std::string *error_str
 	mipsr4k.pc = codeStartAddr;
 
 	// Simple syscall loop.
-	Memory::Write_U32(MIPS_MAKE_SYSCALL("scePsmf", "__UMDVideoPlayerLoop"), codeStartAddr);
+	Memory::Write_U32(MIPS_MAKE_SYSCALL("scePsmfPlayer", "__UMDVideoPlayerLoop"), codeStartAddr);
 	Memory::Write_U32(MIPS_MAKE_J(codeStartAddr), codeStartAddr + 4);
 
 	PSPModule *module = new PSPModule();
