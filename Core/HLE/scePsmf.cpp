@@ -684,6 +684,7 @@ static u32 umdVideoViewBuf = 0;
 static u32 umdVideoDataAddr = 0;
 static u32 umdVideoAudioBufAddr = 0;
 static int umdVideoState = 0;
+static char umdVideoFilename[512];
 
 void __PsmfInit() {
 	videoPixelMode = GE_CMODE_32BIT_ABGR8888;
@@ -697,6 +698,7 @@ void __PsmfInit() {
 	umdVideoDataAddr = 0;
 	umdVideoAudioBufAddr = 0;
 	umdVideoState = 0;
+	umdVideoFilename[0] = 0;
 }
 
 void __PsmfPlayerLoadModule(int devkitVersion, u32 crc) {
@@ -2007,7 +2009,7 @@ static int __PsmfPlayerFinish(u32 psmfPlayer) {
 }
 
 static int __UMDVideoPlayerLoop() {
-	if (umdVideoPlayer == 0) {
+	if (umdVideoBuffer == 0) {
 		u32 umdVideoBufferSize = 0x00400000;
 		umdVideoBuffer = userMemory.Alloc(umdVideoBufferSize, false, "UMDVideoBuffer");
 		u32 umdVideoViewBufSize = 512 * 272 * 4;
@@ -2018,16 +2020,23 @@ static int __UMDVideoPlayerLoop() {
 		umdVideoAudioBufAddr = userMemory.Alloc(audioSamplesBytesVar, false, "UMDVideoAudioBuf");
 
 		u32 playerPtrSize = 4;
-		u32 playerPtr = userMemory.Alloc(playerPtrSize, false, "UMDVideoPlayerPtr");
+		umdVideoPlayer = userMemory.Alloc(playerPtrSize, false, "UMDVideoPlayerPtr");
+		Memory::Write_U32(0, umdVideoPlayer);
+
 		u32 createDataAddrSize = 12;
 		u32 createDataAddr = userMemory.Alloc(createDataAddrSize, false, "UMDVideoCreateData");
 		Memory::Write_U32(umdVideoBuffer, createDataAddr);
 		Memory::Write_U32(0x00400000, createDataAddr + 4);
 		Memory::Write_U32(0x20, createDataAddr + 8);
 
-		hleCall(scePsmfPlayer, int, scePsmfPlayerCreate, playerPtr, createDataAddr);
-		umdVideoPlayer = playerPtr;
+		hleCall(scePsmfPlayer, int, scePsmfPlayerCreate, umdVideoPlayer, createDataAddr);
 		umdVideoState = 0;
+
+		// Initialize display
+		__DisplaySetFramebuf(umdVideoViewBuf, 512, 3, 1);
+
+		u32 filenameAddr = currentMIPS->r[MIPS_REG_A1];
+		truncate_cpy(umdVideoFilename, Memory::GetCharPointer(filenameAddr));
 	}
 
 	PsmfPlayer *player = getPsmfPlayer(umdVideoPlayer);
@@ -2038,10 +2047,7 @@ static int __UMDVideoPlayerLoop() {
 
 	if (umdVideoState == 0) { // Created, waiting for status INIT
 		if (player->status == PSMF_PLAYER_STATUS_INIT) {
-			u32 filenameAddr = currentMIPS->r[MIPS_REG_A1];
-			char filename[512];
-			truncate_cpy(filename, Memory::GetCharPointer(filenameAddr));
-			hleCall(scePsmfPlayer, int, scePsmfPlayerSetPsmf, umdVideoPlayer, filename);
+			hleCall(scePsmfPlayer, int, scePsmfPlayerSetPsmf, umdVideoPlayer, umdVideoFilename);
 			umdVideoState = 1;
 		}
 	} else if (umdVideoState == 1) { // Set, waiting for status STANDBY
