@@ -145,9 +145,9 @@ static bool FileTypeIsPlayable(IdentifiedFileType fileType) {
 	case IdentifiedFileType::UNKNOWN_ISO:
 	case IdentifiedFileType::NORMAL_DIRECTORY:
 	case IdentifiedFileType::PSP_SAVEDATA_DIRECTORY:
-	case IdentifiedFileType::PSP_UMD_VIDEO_ISO:
-		// Reverse logic.
 		return false;
+	case IdentifiedFileType::PSP_UMD_VIDEO_ISO:
+		return true;
 	default:
 		return true;
 	}

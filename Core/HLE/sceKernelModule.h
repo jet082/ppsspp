@@ -227,6 +227,7 @@ void __KernelModuleShutdown();
 u32 __KernelGetModuleGP(SceUID module);
 bool KernelModuleIsKernelMode(SceUID module);
 bool __KernelLoadGEDump(std::string_view base_filename, std::string *error_string);
+bool __KernelLoadUMDVideo(std::string_view filename, std::string *error_string);
 bool __KernelLoadExec(const char *filename, u32 paramPtr, std::string *error_string);
 int __KernelGPUReplay();
 void __KernelReturnFromModuleFunc();

@@ -31,6 +31,8 @@
 #include "Core/HLE/scePsmf.h"
 #include "Core/HLE/sceMpeg.h"
 #include "Core/HLE/sceKernelMemory.h"
+#include "Core/HLE/sceKernelThread.h"
+#include "Core/HLE/sceDisplay.h"
 #include "Core/HW/MediaEngine.h"
 #include "Core/CoreTiming.h"
 #include "GPU/GPUCommon.h"
@@ -676,11 +678,23 @@ static void __PsmfPlayerStatusChange(u64 userdata, int cyclesLate) {
 	}
 }
 
+static u32 umdVideoPlayer = 0;
+static u32 umdVideoBuffer = 0;
+static u32 umdVideoViewBuf = 0;
+static u32 umdVideoDataAddr = 0;
+static u32 umdVideoAudioBufAddr = 0;
+
 void __PsmfInit() {
 	videoPixelMode = GE_CMODE_32BIT_ABGR8888;
 	videoLoopStatus = PSMF_PLAYER_CONFIG_NO_LOOP;
 	psmfPlayerLibVersion = 0;
 	eventPsmfPlayerStatusChange = CoreTiming::RegisterEvent("PsmfPlayerStatusChange", &__PsmfPlayerStatusChange);
+
+	umdVideoPlayer = 0;
+	umdVideoBuffer = 0;
+	umdVideoViewBuf = 0;
+	umdVideoDataAddr = 0;
+	umdVideoAudioBufAddr = 0;
 }
 
 void __PsmfPlayerLoadModule(int devkitVersion, u32 crc) {
@@ -1990,6 +2004,63 @@ static int __PsmfPlayerFinish(u32 psmfPlayer) {
 	return hleLogDebug(Log::ME, 0, "video end reached");
 }
 
+static int __UMDVideoPlayerLoop() {
+	if (umdVideoPlayer == 0) {
+		u32 filenameAddr = currentMIPS->r[MIPS_REG_A0];
+		const char *filename = Memory::GetCharPointer(filenameAddr);
+
+		u32 umdVideoBufferSize = 0x00400000;
+		umdVideoBuffer = userMemory.Alloc(umdVideoBufferSize, false, "UMDVideoBuffer");
+		u32 umdVideoViewBufSize = 512 * 272 * 4;
+		umdVideoViewBuf = userMemory.Alloc(umdVideoViewBufSize, false, "UMDVideoViewBuf");
+		u32 umdVideoDataAddrSize = 12;
+		umdVideoDataAddr = userMemory.Alloc(umdVideoDataAddrSize, false, "UMDVideoData");
+		u32 audioSamplesBytesVar = audioSamplesBytes;
+		umdVideoAudioBufAddr = userMemory.Alloc(audioSamplesBytesVar, false, "UMDVideoAudioBuf");
+
+		u32 playerPtrSize = 4;
+		u32 playerPtr = userMemory.Alloc(playerPtrSize, false, "UMDVideoPlayerPtr");
+		u32 createDataAddrSize = 12;
+		u32 createDataAddr = userMemory.Alloc(createDataAddrSize, false, "UMDVideoCreateData");
+		Memory::Write_U32(umdVideoBuffer, createDataAddr);
+		Memory::Write_U32(0x00400000, createDataAddr + 4);
+		Memory::Write_U32(0x20, createDataAddr + 8);
+
+		scePsmfPlayerCreate(playerPtr, createDataAddr);
+		umdVideoPlayer = Memory::Read_U32(playerPtr);
+		scePsmfPlayerSetPsmf(umdVideoPlayer, filename);
+
+		u32 startDataAddrSize = 24;
+		u32 startDataAddr = userMemory.Alloc(startDataAddrSize, false, "UMDVideoStartData");
+		Memory::Write_U32(0, startDataAddr); // videoCodec (AVC)
+		Memory::Write_U32(0, startDataAddr + 4); // videoStream
+		Memory::Write_U32(15, startDataAddr + 8); // audioCodec (AT3+)
+		Memory::Write_U32(0, startDataAddr + 12); // audioStream
+		Memory::Write_U32(0, startDataAddr + 16); // playMode
+		Memory::Write_U32(1, startDataAddr + 20); // playSpeed
+
+		scePsmfPlayerStart(umdVideoPlayer, startDataAddr, 0);
+	}
+
+	scePsmfPlayerUpdate(umdVideoPlayer);
+
+	Memory::Write_U32(512, umdVideoDataAddr);
+	Memory::Write_U32(umdVideoViewBuf, umdVideoDataAddr + 4);
+
+	scePsmfPlayerGetVideoData(umdVideoPlayer, umdVideoDataAddr);
+
+	// Display it.
+	__DisplaySetFramebuf(umdVideoViewBuf, 512, 3, 1);
+
+	// Audio
+	scePsmfPlayerGetAudioData(umdVideoPlayer, umdVideoAudioBufAddr);
+
+	// Small delay
+	sceKernelDelayThread(10000);
+
+	return 0;
+}
+
 const HLEFunction scePsmf[] = {
 	{0XC22C8327, &WrapU_UU<scePsmfSetPsmf>,                            "scePsmfSetPsmf",                           'x', "xx"  ,HLE_CLEAR_STACK_BYTES, 0x50},
 	{0XC7DB3A5B, &WrapU_UUU<scePsmfGetCurrentStreamType>,              "scePsmfGetCurrentStreamType",              'i', "xpp" ,HLE_CLEAR_STACK_BYTES, 0x50},
@@ -2050,6 +2121,7 @@ const HLEFunction scePsmfPlayer[] =
 	{0X340C12CB, nullptr,                                              "scePsmfPlayer_340C12CB",                   '?', ""   },
 	// Fake function for PPSSPP's use.
 	{0X05B193B7, &WrapI_U<__PsmfPlayerFinish>,                         "__PsmfPlayerFinish",                       'i', "x"  },
+	{0X05B193B8, &WrapI_V<__UMDVideoPlayerLoop>,                       "__UMDVideoPlayerLoop",                     'i', ""   },
 };
 
 void Register_scePsmf() {
