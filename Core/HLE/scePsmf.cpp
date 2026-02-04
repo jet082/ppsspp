@@ -2007,7 +2007,6 @@ static int __PsmfPlayerFinish(u32 psmfPlayer) {
 static int __UMDVideoPlayerLoop() {
 	if (umdVideoPlayer == 0) {
 		u32 filenameAddr = currentMIPS->r[MIPS_REG_A0];
-		const char *filename = Memory::GetCharPointer(filenameAddr);
 
 		u32 umdVideoBufferSize = 0x00400000;
 		umdVideoBuffer = userMemory.Alloc(umdVideoBufferSize, false, "UMDVideoBuffer");
@@ -2026,9 +2025,12 @@ static int __UMDVideoPlayerLoop() {
 		Memory::Write_U32(0x00400000, createDataAddr + 4);
 		Memory::Write_U32(0x20, createDataAddr + 8);
 
-		scePsmfPlayerCreate(playerPtr, createDataAddr);
-		umdVideoPlayer = Memory::Read_U32(playerPtr);
-		scePsmfPlayerSetPsmf(umdVideoPlayer, filename);
+		hleCall(scePsmfPlayer, int, scePsmfPlayerCreate, playerPtr, createDataAddr);
+		umdVideoPlayer = playerPtr;
+
+		char filename[512];
+		truncate_cpy(filename, Memory::GetCharPointer(filenameAddr));
+		hleCall(scePsmfPlayer, int, scePsmfPlayerSetPsmf, umdVideoPlayer, filename);
 
 		u32 startDataAddrSize = 24;
 		u32 startDataAddr = userMemory.Alloc(startDataAddrSize, false, "UMDVideoStartData");
