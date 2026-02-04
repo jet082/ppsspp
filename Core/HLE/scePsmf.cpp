@@ -2036,7 +2036,12 @@ static int __UMDVideoPlayerLoop() {
 		__DisplaySetFramebuf(umdVideoViewBuf, 512, 3, 1);
 
 		u32 filenameAddr = currentMIPS->r[MIPS_REG_A1];
-		truncate_cpy(umdVideoFilename, Memory::GetCharPointer(filenameAddr));
+		const char *filename = Memory::GetCharPointer(filenameAddr);
+		if (filename) {
+			truncate_cpy(umdVideoFilename, filename);
+		} else {
+			umdVideoFilename[0] = 0;
+		}
 	}
 
 	PsmfPlayer *player = getPsmfPlayer(umdVideoPlayer);
@@ -2120,6 +2125,7 @@ const HLEFunction scePsmf[] = {
 	{0X5F457515, &WrapU_UU<scePsmfGetEPidWithTimestamp>,               "scePsmfGetEPidWithTimestamp",              'x', "xx"  ,HLE_CLEAR_STACK_BYTES, 0x20},
 	{0X43AC7DBB, nullptr,                                              "scePsmfGetPsmfMark",                       '?', ""   },
 	{0XDE78E9FC, nullptr,                                              "scePsmfGetNumberOfPsmfMarks",              '?', ""   },
+	{0X05B193B8, &WrapI_V<__UMDVideoPlayerLoop>,                       "__UMDVideoPlayerLoop",                     'i', ""   },
 };
 
 const HLEFunction scePsmfPlayer[] =
