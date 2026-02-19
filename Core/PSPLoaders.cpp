@@ -88,6 +88,9 @@ bool MountGameISO(FileLoader *fileLoader, std::string *errorString) {
 
 bool LoadParamSFOFromDisc() {
 	std::string sfoPath("disc0:/PSP_GAME/PARAM.SFO");
+	if (PSP_CoreParameter().fileType == IdentifiedFileType::PSP_UMD_VIDEO_ISO) {
+		sfoPath = "disc0:/UMD_VIDEO/PARAM.SFO";
+	}
 	PSPFileInfo fileInfo = pspFileSystem.GetFileInfo(sfoPath.c_str());
 	if (fileInfo.exists) {
 		std::vector<u8> paramsfo;
@@ -208,6 +211,9 @@ static const char * const altBootNames[] = {
 };
 
 bool Load_PSP_ISO(FileLoader *fileLoader, std::string *error_string) {
+	if (PSP_CoreParameter().fileType == IdentifiedFileType::PSP_UMD_VIDEO_ISO) {
+		return Load_PSP_UMD_Video(fileLoader, error_string);
+	}
 	std::string bootpath("disc0:/PSP_GAME/SYSDIR/EBOOT.BIN");
 
 	// Bypass Chinese translation patches, see comment above.
@@ -268,6 +274,34 @@ bool Load_PSP_ISO(FileLoader *fileLoader, std::string *error_string) {
 	INFO_LOG(Log::Loader, "Loading %s...", bootpath.c_str());
 	// TODO: We can't use the initial error_string pointer.
 	return __KernelLoadExec(bootpath.c_str(), 0, &PSP_CoreParameter().errorString);
+}
+
+bool Load_PSP_UMD_Video(FileLoader *fileLoader, std::string *error_string) {
+	auto mpsFiles = pspFileSystem.GetDirListing("disc0:/UMD_VIDEO/STREAM/");
+
+	std::string bootpath = "";
+	s64 max_size = -1;
+	for (auto &file : mpsFiles) {
+		if (endsWithNoCase(file.name, ".mps")) {
+			if ((s64)file.size > max_size) {
+				max_size = file.size;
+				bootpath = "disc0:/UMD_VIDEO/STREAM/" + file.name;
+			}
+		}
+	}
+
+	if (bootpath.empty()) {
+		*error_string = "No video stream found on UMD Video.";
+		return false;
+	}
+
+	// If there's a game-specific config, load it.
+	std::string id = g_paramSFO.GetValueString("DISC_ID");
+	g_Config.LoadGameConfig(id);
+
+	System_PostUIMessage(UIMessage::CONFIG_LOADED);
+	INFO_LOG(Log::Loader, "Loading UMD Video %s...", bootpath.c_str());
+	return __KernelLoadUMDVideo(bootpath.c_str(), &PSP_CoreParameter().errorString);
 }
 
 // TODO: Move this to common. Merge with ResolvePath?

@@ -1835,6 +1835,32 @@ bool __KernelLoadGEDump(std::string_view base_filename, std::string *error_strin
 	return true;
 }
 
+bool __KernelLoadUMDVideo(std::string_view base_filename, std::string *error_string) {
+	__KernelLoadReset();
+
+	constexpr u32 codeStartAddr = PSP_GetUserMemoryBase();
+	mipsr4k.pc = codeStartAddr;
+
+	// Simple syscall loop.
+	Memory::Write_U32(MIPS_MAKE_SYSCALL("scePsmfPlayer", "__UMDVideoPlayerLoop"), codeStartAddr);
+	Memory::Write_U32(MIPS_MAKE_J(codeStartAddr), codeStartAddr + 4);
+
+	PSPModule *module = new PSPModule();
+	kernelObjects.Create(module);
+	loadedModules.insert(module->GetUID());
+	memset(&module->nm, 0, sizeof(module->nm));
+	module->isFake = true;
+	module->nm.entry_addr = codeStartAddr;
+	module->nm.gp_value = -1;
+	truncate_cpy(module->nm.name, "UMDVideoPlayer");
+
+	SceUID threadID = __KernelSetupRootThread(module->GetUID(), (int)base_filename.size(), base_filename.data(), 0x20, 0x1000, 0);
+	__KernelSetThreadRA(threadID, NID_MODULERETURN);
+
+	__KernelStartIdleThreads(module->GetUID());
+	return true;
+}
+
 int __KernelGPUReplay() {
 	// Special ABI: s0 and s1 are the "args".  Not null terminated.
 	const char *filenamep = Memory::GetCharPointer(currentMIPS->r[MIPS_REG_S1]);

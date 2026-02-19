@@ -287,6 +287,7 @@ static bool CPU_Init(FileLoader *fileLoader, IdentifiedFileType type, std::strin
 	case IdentifiedFileType::PSP_ISO:
 	case IdentifiedFileType::PSP_ISO_NP:
 	case IdentifiedFileType::PSP_DISC_DIRECTORY:
+	case IdentifiedFileType::PSP_UMD_VIDEO_ISO:
 		// Doesn't seem to take ownership of fileLoader?
 		if (!MountGameISO(fileLoader, errorString)) {
 			*errorString = "Failed to mount ISO file: " + *errorString;
@@ -328,13 +329,6 @@ static bool CPU_Init(FileLoader *fileLoader, IdentifiedFileType type, std::strin
 			gameTitle = g_CoreParameter.fileToStart.GetFilename();
 		}
 		break;
-	case IdentifiedFileType::PSP_UMD_VIDEO_ISO:
-	{
-		ERROR_LOG(Log::Loader, "PPSSPP doesn't support UMD Video.");
-		auto er = GetI18NCategory(I18NCat::ERRORS);
-		*errorString = er->T("PPSSPP doesn't support UMD Video.");
-		return false;
-	}
 	default:
 	{
 		// Trying to boot other things lands us here. We need to return a sensible error string.
@@ -474,6 +468,7 @@ static bool CPU_Init(FileLoader *fileLoader, IdentifiedFileType type, std::strin
 	case IdentifiedFileType::PSP_ISO:
 	case IdentifiedFileType::PSP_ISO_NP:
 	case IdentifiedFileType::PSP_DISC_DIRECTORY:	// behaves the same as the mounting is already done by now
+	case IdentifiedFileType::PSP_UMD_VIDEO_ISO:
 		pspFileSystem.SetStartingDirectory("disc0:/PSP_GAME/USRDIR");
 		if (!Load_PSP_ISO(fileLoader, errorString)) {
 			return false;
